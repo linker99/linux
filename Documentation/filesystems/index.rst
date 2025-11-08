@@ -28,6 +28,7 @@ algorithms work.
    dnotify
    fiemap
    files
+   inode-union-fields
    locks
    multigrain-ts
    mount_api

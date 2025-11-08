@@ -744,6 +744,16 @@ struct inode {
 	struct list_head	i_lru;		/* inode LRU list */
 	struct list_head	i_sb_list;
 	struct list_head	i_wb_list;	/* backing dev writeback list */
+	/*
+	 * i_dentry and i_rcu share the same memory location in a union:
+	 * - i_dentry: List of all directory entries (dentries) pointing to
+	 *   this inode. An inode can have multiple dentries (hard links).
+	 *   Used during normal inode lifetime.
+	 * - i_rcu: RCU callback head used for delayed inode freeing when the
+	 *   inode is being destroyed. Once an inode is being freed, it no
+	 *   longer needs the dentry list, so this memory is repurposed for
+	 *   RCU-safe destruction.
+	 */
 	union {
 		struct hlist_head	i_dentry;
 		struct rcu_head		i_rcu;
