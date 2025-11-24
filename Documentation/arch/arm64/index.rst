@@ -22,6 +22,7 @@ ARM64 Architecture
     legacy_instructions
     memory
     memory-tagging-extension
+    memset-analysis
     mops
     perf
     pointer-authentication
