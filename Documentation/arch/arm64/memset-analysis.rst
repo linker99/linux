@@ -83,7 +83,7 @@ memset函数原型
 4. 使用场景
 ===========
 
-memset函数在Linux内核中有广泛的应用场景：
+memset函数在Linux内核中有广泛的应用场景，但**仅限于Normal类型内存**：
 
 初始化数据结构
 --------------
@@ -118,10 +118,21 @@ memset函数在Linux内核中有广泛的应用场景：
 DMA缓冲区初始化
 --------------
 
-初始化DMA缓冲区以避免数据泄漏::
+初始化DMA一致性缓冲区以避免数据泄漏::
 
    void *dma_buf = dma_alloc_coherent(dev, size, &dma_handle, GFP_KERNEL);
    memset(dma_buf, 0, size);
+
+**不适用场景**：MMIO映射内存
+-----------------------------
+
+memset()不应用于Device类型内存（MMIO映射的硬件寄存器）::
+
+   void __iomem *regs = ioremap(phys_addr, size);
+   /* 错误: memset(regs, 0, size);  -- 可能导致Data Abort! */
+   memset_io(regs, 0, size);  /* 正确: 使用memset_io */
+
+原因：DC ZVA指令只能在Normal内存上使用，在Device内存上会触发异常。
 
 5. 代码实现逻辑
 ===============
@@ -159,10 +170,15 @@ ARM64 memset实现采用分层优化策略：
 当填充值为0且缓冲区足够大（≥ 128字节）时：
 
 1. 读取DCZID_EL0系统寄存器获取缓存行大小
-2. 验证缓存行大小 ≥ 64字节
-3. 对齐到缓存行边界
-4. 使用DC ZVA指令零填充整个缓存行
-5. 处理剩余不足一个缓存行的字节
+2. 检查DCZID_EL0.DZP位（bit 4）：如果为1则禁用DC ZVA，回退到普通路径
+3. 验证缓存行大小 ≥ 64字节
+4. 对齐到缓存行边界
+5. 使用DC ZVA指令零填充整个缓存行
+6. 处理剩余不足一个缓存行的字节
+
+**重要**: DC ZVA指令只能用于Normal类型内存（普通可缓存内存）。代码通过检查
+DCZID_EL0.DZP位来确认DC ZVA是否可用。该指令不应用于Device类型内存（MMIO），
+否则会触发数据异常（Data Abort）。对于MMIO映射的内存，应使用memset_io()函数。
 
 MOPS扩展支持
 ------------
@@ -203,6 +219,13 @@ MOPS扩展支持
 1. **缓存行大小**: DC ZVA操作的块大小取决于硬件配置（通常64-256字节）
 2. **MOPS支持**: 仅在ARMv8.8及更高版本上可用
 3. **性能计数器**: 大量memset操作可能影响性能计数器统计
+4. **内存类型限制**: 
+
+   - memset()仅适用于Normal类型内存（普通RAM）
+   - DC ZVA指令要求DCZID_EL0.DZP=0，且目标地址必须是Normal内存
+   - 对于Device类型内存（MMIO映射），必须使用memset_io()
+   - 在Device内存上使用DC ZVA会导致数据异常（Data Abort）
+   - 代码通过读取DCZID_EL0寄存器bit 4检查DC ZVA是否被禁用
 
 调试建议
 --------
@@ -373,6 +396,43 @@ MOPS扩展支持
        }
    }
 
+示例8: MMIO内存操作 - 正确与错误的用法
+--------------------------------------
+
+.. code-block:: c
+
+   #include <linux/io.h>
+   #include <linux/string.h>
+
+   void setup_device_registers(void __iomem *regs, size_t size)
+   {
+       /* 错误: 不要对MMIO使用memset！
+        * 这可能触发DC ZVA指令在Device内存上执行，
+        * 导致数据异常（Data Abort）
+        */
+       // memset(regs, 0, size);  /* 危险！不要这样做！ */
+
+       /* 正确: 对MMIO映射使用memset_io */
+       memset_io(regs, 0, size);
+   }
+
+   void setup_normal_memory(void *buffer, size_t size)
+   {
+       /* 正确: 对普通RAM使用memset，可以利用DC ZVA优化 */
+       memset(buffer, 0, size);
+   }
+
+   /* 说明：
+    * - memset() 适用于: 普通RAM（Normal内存）
+    *   - 可以使用DC ZVA指令优化（当值为0时）
+    *   - 允许推测执行、未对齐访问、写合并
+    * 
+    * - memset_io() 适用于: MMIO/设备寄存器（Device内存）
+    *   - 使用显式的字节/字/双字写操作
+    *   - 不使用DC ZVA指令
+    *   - 严格的访问顺序和对齐要求
+    */
+
 8. 性能特性总结
 ===============
 
@@ -409,10 +469,23 @@ ARM64实现的特点：
 10. 相关函数
 ============
 
+普通内存操作：
+
 * **memzero_explicit()**: 保证执行的零值填充（不会被优化）
 * **memset16/32/64()**: 按16/32/64位单元填充
 * **memcpy()**: 内存复制
 * **memmove()**: 支持重叠区域的内存复制
+
+MMIO/设备内存操作：
+
+* **memset_io()**: 用于设置I/O内存（MMIO映射区域），不使用DC ZVA
+* **memcpy_toio()**: 复制数据到I/O内存
+* **memcpy_fromio()**: 从I/O内存复制数据
+
+关键区别：
+
+* memset() 系列适用于Normal内存，可使用DC ZVA优化
+* memset_io() 系列适用于Device内存，使用显式的I/O操作
 
 11. 参考资料
 ============
@@ -429,12 +502,22 @@ ARM64架构的memset实现是一个高度优化的函数：
 
 * 支持任意对齐和任意大小的内存区域
 * 采用分层策略针对不同大小优化
-* 零值填充有专门的硬件指令优化
+* 零值填充有专门的硬件指令优化（DC ZVA）
 * 支持最新的MOPS扩展以获得最佳性能
 
 正确使用memset时应注意：
 
-* 确保内存范围有效
+* 确保内存范围有效且为Normal类型内存
+* **关键限制**: 不要对MMIO映射使用memset，应使用memset_io
+* DC ZVA指令只能在Normal内存上使用，Device内存会导致异常
 * 对安全敏感数据使用memzero_explicit
 * 理解性能特性以优化使用方式
 * 在多线程环境下注意同步
+
+DC ZVA优化的实现依据：
+
+* 代码第149行：``mrs tmp1, dczid_el0`` 读取DC ZVA配置寄存器
+* 代码第150行：``tbnz tmp1, #4, .Lnot_short`` 检查DZP位，如果禁用则跳过
+* 代码第198行：``dc zva, dst`` 执行零值填充操作
+* DCZID_EL0.DZP=1 表示DC ZVA被禁用（某些虚拟化环境或Device内存）
+* 在Device内存上执行DC ZVA会触发数据异常，因此必须使用memset_io
