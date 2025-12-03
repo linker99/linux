@@ -204,6 +204,10 @@ void shutdown(int exit_val, char *err_cause, int line_no)
 	if (saved_max_msgsize)
 		__set(max_msgsize, saved_max_msgsize,
 		      "failed to restore saved_max_msgsize");
+	if (max_msgs)
+		fclose(max_msgs);
+	if (max_msgsize)
+		fclose(max_msgsize);
 	if (exit_val)
 		error(exit_val, errno_at_shutdown, "%s at %d",
 		      err_cause, line_no);
