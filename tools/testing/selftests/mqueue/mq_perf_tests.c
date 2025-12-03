@@ -91,6 +91,7 @@ int continuous_mode;
 int continuous_mode_fake;
 
 struct rlimit saved_limits, cur_limits;
+struct rlimit saved_nofile_limits, cur_nofile_limits;
 int saved_max_msgs, saved_max_msgsize;
 int cur_max_msgs, cur_max_msgsize;
 FILE *max_msgs, *max_msgsize;
@@ -533,6 +534,9 @@ void increase_limits(void)
 	cur_limits.rlim_cur = RLIM_INFINITY;
 	cur_limits.rlim_max = RLIM_INFINITY;
 	setr(RLIMIT_MSGQUEUE, &cur_limits);
+	/* Set RLIMIT_NOFILE to the hard limit (can't exceed without CAP_SYS_RESOURCE) */
+	cur_nofile_limits.rlim_cur = cur_nofile_limits.rlim_max;
+	setr(RLIMIT_NOFILE, &cur_nofile_limits);
 	while (try_set(max_msgs, cur_max_msgs += 10))
 		;
 	cur_max_msgs = get(max_msgs);
@@ -653,6 +657,8 @@ int main(int argc, char *argv[])
 	/* Load up the current system values for everything we can */
 	getr(RLIMIT_MSGQUEUE, &saved_limits);
 	cur_limits = saved_limits;
+	getr(RLIMIT_NOFILE, &saved_nofile_limits);
+	cur_nofile_limits = saved_nofile_limits;
 	saved_max_msgs = cur_max_msgs = get(max_msgs);
 	saved_max_msgsize = cur_max_msgsize = get(max_msgsize);
 	errno = 0;
@@ -667,6 +673,10 @@ int main(int argc, char *argv[])
 		(long) saved_limits.rlim_cur);
 	printf("\tRLIMIT_MSGQUEUE(hard):\t\t\t%ld\n",
 		(long) saved_limits.rlim_max);
+	printf("\tRLIMIT_NOFILE(soft):\t\t\t%ld\n",
+		(long) saved_nofile_limits.rlim_cur);
+	printf("\tRLIMIT_NOFILE(hard):\t\t\t%ld\n",
+		(long) saved_nofile_limits.rlim_max);
 	printf("\tMaximum Message Size:\t\t\t%d\n", saved_max_msgsize);
 	printf("\tMaximum Queue Size:\t\t\t%d\n", saved_max_msgs);
 	printf("\tNice value:\t\t\t\t%d\n", cur_nice);
@@ -683,6 +693,15 @@ int main(int argc, char *argv[])
 		       (long) cur_limits.rlim_cur);
 		printf("\tRLIMIT_MSGQUEUE(hard):\t\t\t%ld\n",
 		       (long) cur_limits.rlim_max);
+	}
+	if (cur_nofile_limits.rlim_cur == RLIM_INFINITY) {
+		printf("\tRLIMIT_NOFILE(soft):\t\t\t(unlimited)\n");
+		printf("\tRLIMIT_NOFILE(hard):\t\t\t(unlimited)\n");
+	} else {
+		printf("\tRLIMIT_NOFILE(soft):\t\t\t%ld\n",
+		       (long) cur_nofile_limits.rlim_cur);
+		printf("\tRLIMIT_NOFILE(hard):\t\t\t%ld\n",
+		       (long) cur_nofile_limits.rlim_max);
 	}
 	printf("\tMaximum Message Size:\t\t\t%d\n", cur_max_msgsize);
 	printf("\tMaximum Queue Size:\t\t\t%d\n", cur_max_msgs);
