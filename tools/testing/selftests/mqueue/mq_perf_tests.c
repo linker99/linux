@@ -715,6 +715,8 @@ int main(int argc, char *argv[])
 		shutdown(1, "sigaction(SIGTERM)", __LINE__);
 
 	if (!continuous_mode_fake) {
+		/* Ensure any stale queue from previous run is cleaned up */
+		mq_unlink(queue_path);
 		attr.mq_flags = O_NONBLOCK;
 		attr.mq_maxmsg = cur_max_msgs;
 		attr.mq_msgsize = MSG_SIZE;
