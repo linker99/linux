@@ -303,10 +303,13 @@ static inline void open_queue(struct mq_attr *attr)
 	if (queue == -1) {
 		fprintf(stderr, "\nmq_open() failed with errno=%d (%s)\n",
 			errno, strerror(errno));
-		fprintf(stderr, "Requested: mq_maxmsg=%ld, mq_msgsize=%ld\n",
-			attr->mq_maxmsg, attr->mq_msgsize);
-		fprintf(stderr, "Calculated bytes needed: ~%ld\n",
-			(long)(attr->mq_maxmsg * (attr->mq_msgsize + 256)));
+		if (attr) {
+			fprintf(stderr, "Requested: mq_maxmsg=%ld, mq_msgsize=%ld\n",
+				attr->mq_maxmsg, attr->mq_msgsize);
+			/* Rough estimate: message data + overhead for msg_msg struct and tree nodes */
+			fprintf(stderr, "Estimated bytes needed: ~%ld (may exceed user/namespace limits)\n",
+				(long)(attr->mq_maxmsg * (attr->mq_msgsize + 256)));
+		}
 		shutdown(1, "mq_open()", __LINE__);
 	}
 	if (mq_getattr(queue, &result))
