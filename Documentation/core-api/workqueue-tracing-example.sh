@@ -43,12 +43,11 @@ echo "Tracing enabled. Waiting for workqueue activity..."
 echo "Press Ctrl+C to stop tracing and view results."
 echo ""
 
-# Wait for user interrupt
-sleep infinity &
-SLEEP_PID=$!
-trap "kill $SLEEP_PID 2>/dev/null; echo ''; echo 'Stopping trace...'" INT
-
-wait $SLEEP_PID
+# Wait for user interrupt - use a loop for better portability
+trap "echo ''; echo 'Stopping trace...'; break" INT
+while true; do
+    sleep 10
+done
 
 # Disable tracing
 echo 0 > "$TRACE_DIR/tracing_on"
@@ -65,7 +64,7 @@ echo 0 > "$TRACE_DIR/events/workqueue/workqueue_queue_work_caller/enable"
 echo ""
 echo "=== Summary ==="
 echo "Processes that triggered workqueue operations:"
-cat "$TRACE_DIR/trace" | grep -oP 'pid=\K\d+|comm=\K[^ ]+' | paste - - | sort -u
+grep -oP 'pid=\K\d+|comm=\K[^ ]+' "$TRACE_DIR/trace" | paste - - | sort -u
 
 echo ""
 echo "Tracing complete."
