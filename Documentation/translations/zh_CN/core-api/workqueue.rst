@@ -670,6 +670,89 @@ dm-crypt 的性能测试清楚地阐明了这一取舍。
 
 工作项函数在堆栈追踪中应该是微不足道的。
 
+
+用户态进程如何触发__queue_work()
+================================
+
+``__queue_work()`` 是内核内部函数，用户态进程无法直接调用它。但是，用户态进程可以通过
+系统调用间接触发它。以下是一些常见的调用路径：
+
+调用路径示例
+-----------
+
+1. **文件I/O操作**
+
+   当用户态进程执行文件操作（如read、write、fsync等）时，文件系统驱动可能会将某些任务
+   排队到工作队列中进行异步处理::
+
+     用户态: write() 系统调用
+       -> VFS层
+       -> 文件系统驱动 (例如: ext4, xfs)
+       -> queue_work() / queue_delayed_work()
+       -> __queue_work()
+
+2. **块设备I/O**
+
+   块设备驱动程序使用工作队列处理I/O请求::
+
+     用户态: read()/write() 到块设备
+       -> 块层 (block layer)
+       -> 块设备驱动
+       -> queue_work()
+       -> __queue_work()
+
+3. **网络操作**
+
+   网络子系统大量使用工作队列处理异步任务::
+
+     用户态: socket 操作 (send, recv等)
+       -> 网络协议栈
+       -> 网络设备驱动
+       -> queue_work()
+       -> __queue_work()
+
+4. **设备驱动操作**
+
+   许多设备驱动使用工作队列处理中断后的延迟工作::
+
+     用户态: ioctl() 或设备文件操作
+       -> 字符/块设备驱动
+       -> queue_work()
+       -> __queue_work()
+
+调试和追踪
+---------
+
+要了解用户态进程如何触发 ``__queue_work()``，可以使用新的追踪点
+``workqueue_queue_work_caller``::
+
+	$ echo workqueue:workqueue_queue_work_caller > /sys/kernel/tracing/set_event
+	$ cat /sys/kernel/tracing/trace_pipe
+
+这个追踪点会显示：
+
+* 工作项函数 (function)
+* 工作队列名称 (workqueue)
+* 调用者地址 (caller) - 可以用来确定哪个内核函数调用了queue_work
+* 触发进程的PID和命令名 (pid, comm)
+
+示例输出::
+
+	kworker/0:1-123   [000] .... 12345.678901: workqueue_queue_work_caller: 
+	  work=ffff888... function=some_work_fn workqueue=events 
+	  caller=device_driver_fn+0x42/0x100 pid=1234 comm=myapp
+
+通过 ``caller`` 字段，可以追溯到内核中哪个函数排队了工作项，结合 ``pid`` 和 ``comm`` 
+字段，可以确定是哪个用户态进程的操作触发了这个工作项。
+
+进一步追踪可以使用堆栈追踪::
+
+	$ echo 1 > /sys/kernel/tracing/options/stacktrace
+	$ echo workqueue:workqueue_queue_work_caller > /sys/kernel/tracing/set_event
+
+这将在每次排队工作项时打印完整的内核调用堆栈，从而可以看到从系统调用到
+``__queue_work()`` 的完整调用路径。
+
 不可重入条件
 ============
 

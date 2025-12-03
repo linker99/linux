@@ -763,6 +763,91 @@ The work item's function should be trivially visible in the stack
 trace.
 
 
+How User-space Processes Trigger __queue_work()
+===============================================
+
+``__queue_work()`` is an internal kernel function that cannot be directly
+called from user-space. However, user-space processes can indirectly trigger
+it through system calls. Here are some common call paths:
+
+Call Path Examples
+------------------
+
+1. **File I/O Operations**
+
+   When a user-space process performs file operations (read, write, fsync, etc.),
+   filesystem drivers may queue tasks to workqueues for asynchronous processing::
+
+     User-space: write() system call
+       -> VFS layer
+       -> Filesystem driver (e.g., ext4, xfs)
+       -> queue_work() / queue_delayed_work()
+       -> __queue_work()
+
+2. **Block Device I/O**
+
+   Block device drivers use workqueues to process I/O requests::
+
+     User-space: read()/write() to block device
+       -> Block layer
+       -> Block device driver
+       -> queue_work()
+       -> __queue_work()
+
+3. **Network Operations**
+
+   The network subsystem extensively uses workqueues for asynchronous tasks::
+
+     User-space: socket operations (send, recv, etc.)
+       -> Network protocol stack
+       -> Network device driver
+       -> queue_work()
+       -> __queue_work()
+
+4. **Device Driver Operations**
+
+   Many device drivers use workqueues for deferred work after interrupts::
+
+     User-space: ioctl() or device file operations
+       -> Character/block device driver
+       -> queue_work()
+       -> __queue_work()
+
+Debugging and Tracing
+---------------------
+
+To understand how user-space processes trigger ``__queue_work()``, you can use
+the new tracepoint ``workqueue_queue_work_caller``::
+
+	$ echo workqueue:workqueue_queue_work_caller > /sys/kernel/tracing/set_event
+	$ cat /sys/kernel/tracing/trace_pipe
+
+This tracepoint shows:
+
+* Work item function (function)
+* Workqueue name (workqueue)
+* Caller address (caller) - identifies which kernel function called queue_work
+* Triggering process PID and command name (pid, comm)
+
+Example output::
+
+	kworker/0:1-123   [000] .... 12345.678901: workqueue_queue_work_caller: 
+	  work=ffff888... function=some_work_fn workqueue=events 
+	  caller=device_driver_fn+0x42/0x100 pid=1234 comm=myapp
+
+Using the ``caller`` field, you can trace back to which kernel function queued
+the work item. Combined with the ``pid`` and ``comm`` fields, you can determine
+which user-space process operation triggered this work item.
+
+For more detailed tracing, you can enable stack traces::
+
+	$ echo 1 > /sys/kernel/tracing/options/stacktrace
+	$ echo workqueue:workqueue_queue_work_caller > /sys/kernel/tracing/set_event
+
+This will print the complete kernel call stack each time a work item is queued,
+allowing you to see the full call path from the system call to ``__queue_work()``.
+
+
 Non-reentrance Conditions
 =========================
 

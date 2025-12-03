@@ -2321,6 +2321,7 @@ retry:
 
 	/* pwq determined, queue */
 	trace_workqueue_queue_work(req_cpu, pwq, work);
+	trace_workqueue_queue_work_caller(req_cpu, pwq, work, _RET_IP_);
 
 	if (WARN_ON(!list_empty(&work->entry)))
 		goto out;
