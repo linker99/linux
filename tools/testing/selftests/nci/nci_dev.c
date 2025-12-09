@@ -537,8 +537,13 @@ TEST_F(NCI, init)
 	struct msgtemplate msg;
 	int rc;
 
-	if (self->virtual_nci_fd == -1 && self->open_errno == ENOENT)
-		SKIP(return, "Skipping test since /dev/virtual_nci does not exist");
+	if (self->virtual_nci_fd == -1) {
+		if (self->open_errno == ENOENT)
+			SKIP(return, "Skipping test since /dev/virtual_nci does not exist");
+		if (self->open_errno == EACCES)
+			SKIP(return, "Skipping test since /dev/virtual_nci permission denied (need root?)");
+		SKIP(return, "Skipping test since /dev/virtual_nci open failed");
+	}
 
 	rc = get_nci_devid(self->sd, self->fid, self->pid, self->dev_idex,
 			   &msg);
@@ -638,8 +643,13 @@ TEST_F(NCI, start_poll)
 {
 	int status;
 
-	if (self->virtual_nci_fd == -1 && self->open_errno == ENOENT)
-		SKIP(return, "Skipping test since /dev/virtual_nci does not exist");
+	if (self->virtual_nci_fd == -1) {
+		if (self->open_errno == ENOENT)
+			SKIP(return, "Skipping test since /dev/virtual_nci does not exist");
+		if (self->open_errno == EACCES)
+			SKIP(return, "Skipping test since /dev/virtual_nci permission denied (need root?)");
+		SKIP(return, "Skipping test since /dev/virtual_nci open failed");
+	}
 
 	status = start_polling(self->dev_idex, self->proto, self->virtual_nci_fd,
 			       self->sd, self->fid, self->pid);
@@ -856,8 +866,13 @@ TEST_F(NCI, t4t_tag_read)
 	int nfc_sock;
 	int status;
 
-	if (self->virtual_nci_fd == -1 && self->open_errno == ENOENT)
-		SKIP(return, "Skipping test since /dev/virtual_nci does not exist");
+	if (self->virtual_nci_fd == -1) {
+		if (self->open_errno == ENOENT)
+			SKIP(return, "Skipping test since /dev/virtual_nci does not exist");
+		if (self->open_errno == EACCES)
+			SKIP(return, "Skipping test since /dev/virtual_nci permission denied (need root?)");
+		SKIP(return, "Skipping test since /dev/virtual_nci open failed");
+	}
 
 	status = start_polling(self->dev_idex, self->proto, self->virtual_nci_fd,
 			       self->sd, self->fid, self->pid);
@@ -881,8 +896,13 @@ TEST_F(NCI, deinit)
 	int status;
 	int rc;
 
-	if (self->virtual_nci_fd == -1 && self->open_errno == ENOENT)
-		SKIP(return, "Skipping test since /dev/virtual_nci does not exist");
+	if (self->virtual_nci_fd == -1) {
+		if (self->open_errno == ENOENT)
+			SKIP(return, "Skipping test since /dev/virtual_nci does not exist");
+		if (self->open_errno == EACCES)
+			SKIP(return, "Skipping test since /dev/virtual_nci permission denied (need root?)");
+		SKIP(return, "Skipping test since /dev/virtual_nci open failed");
+	}
 
 	rc = get_nci_devid(self->sd, self->fid, self->pid, self->dev_idex,
 			   &msg);
