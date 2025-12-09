@@ -38,9 +38,10 @@
 		if ((fd) == -1) { \
 			if ((err) == ENOENT) \
 				SKIP(return, "Skipping test since /dev/virtual_nci does not exist"); \
-			if ((err) == EACCES) \
+			else if ((err) == EACCES) \
 				SKIP(return, "Skipping test since /dev/virtual_nci permission denied (need root?)"); \
-			SKIP(return, "Skipping test since /dev/virtual_nci open failed"); \
+			else \
+				SKIP(return, "Skipping test since /dev/virtual_nci open failed"); \
 		} \
 	} while (0)
 
