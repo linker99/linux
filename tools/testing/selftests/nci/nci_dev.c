@@ -304,6 +304,7 @@ FIXTURE(NCI) {
 	__u32 pid;
 	__u16 fid;
 	int sd;
+	int open_errno;
 };
 
 FIXTURE_VARIANT(NCI) {
@@ -419,7 +420,9 @@ FIXTURE_SETUP(NCI)
 	ASSERT_NE(self->fid, -1);
 
 	self->virtual_nci_fd = open("/dev/virtual_nci", O_RDWR);
-	ASSERT_GT(self->virtual_nci_fd, -1);
+	self->open_errno = errno;
+	if (self->virtual_nci_fd == -1)
+		return;
 
 	rc = setsockopt(self->sd, SOL_NETLINK, NETLINK_ADD_MEMBERSHIP, &event_group,
 			sizeof(event_group));
@@ -500,6 +503,9 @@ FIXTURE_TEARDOWN(NCI)
 	int status;
 	int rc;
 
+	if (self->virtual_nci_fd == -1)
+		goto cleanup_netlink;
+
 	if (self->open_state) {
 		if (self->isNCI2)
 			rc = pthread_create(&thread_t, NULL,
@@ -518,15 +524,20 @@ FIXTURE_TEARDOWN(NCI)
 		ASSERT_EQ(status, 0);
 	}
 
-	close(self->sd);
 	close(self->virtual_nci_fd);
 	self->open_state = false;
+
+cleanup_netlink:
+	close(self->sd);
 }
 
 TEST_F(NCI, init)
 {
 	struct msgtemplate msg;
 	int rc;
+
+	if (self->virtual_nci_fd == -1 && self->open_errno == ENOENT)
+		SKIP(return, "Skipping test since /dev/virtual_nci does not exist");
 
 	rc = get_nci_devid(self->sd, self->fid, self->pid, self->dev_idex,
 			   &msg);
@@ -625,6 +636,9 @@ int stop_polling(int dev_idx, int virtual_fd, int sd, int fid, int pid)
 TEST_F(NCI, start_poll)
 {
 	int status;
+
+	if (self->virtual_nci_fd == -1 && self->open_errno == ENOENT)
+		SKIP(return, "Skipping test since /dev/virtual_nci does not exist");
 
 	status = start_polling(self->dev_idex, self->proto, self->virtual_nci_fd,
 			       self->sd, self->fid, self->pid);
@@ -841,6 +855,9 @@ TEST_F(NCI, t4t_tag_read)
 	int nfc_sock;
 	int status;
 
+	if (self->virtual_nci_fd == -1 && self->open_errno == ENOENT)
+		SKIP(return, "Skipping test since /dev/virtual_nci does not exist");
+
 	status = start_polling(self->dev_idex, self->proto, self->virtual_nci_fd,
 			       self->sd, self->fid, self->pid);
 	EXPECT_EQ(status, 0);
@@ -862,6 +879,9 @@ TEST_F(NCI, deinit)
 	pthread_t thread_t;
 	int status;
 	int rc;
+
+	if (self->virtual_nci_fd == -1 && self->open_errno == ENOENT)
+		SKIP(return, "Skipping test since /dev/virtual_nci does not exist");
 
 	rc = get_nci_devid(self->sd, self->fid, self->pid, self->dev_idex,
 			   &msg);
