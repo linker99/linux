@@ -420,9 +420,10 @@ FIXTURE_SETUP(NCI)
 	ASSERT_NE(self->fid, -1);
 
 	self->virtual_nci_fd = open("/dev/virtual_nci", O_RDWR);
-	self->open_errno = errno;
-	if (self->virtual_nci_fd == -1)
+	if (self->virtual_nci_fd == -1) {
+		self->open_errno = errno;
 		return;
+	}
 
 	rc = setsockopt(self->sd, SOL_NETLINK, NETLINK_ADD_MEMBERSHIP, &event_group,
 			sizeof(event_group));
