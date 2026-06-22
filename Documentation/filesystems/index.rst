@@ -28,6 +28,7 @@ algorithms work.
    dnotify
    fiemap
    files
+   inode-union-fields
    locks
    mmap_prepare
    multigrain-ts
