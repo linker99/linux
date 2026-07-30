@@ -126,6 +126,52 @@ TRACE_EVENT(workqueue_execute_end,
 	TP_printk("work struct %p: function %ps", __entry->work, __entry->function)
 );
 
+/**
+ * workqueue_queue_work_caller - called when work is queued with caller info
+ * @req_cpu:	the requested cpu
+ * @pwq:	pointer to struct pool_workqueue
+ * @work:	pointer to struct work_struct
+ * @caller:	caller's return address
+ *
+ * This event provides additional context about who queued the work,
+ * which is useful for debugging and understanding how user-space
+ * processes trigger workqueue operations through system calls.
+ */
+TRACE_EVENT(workqueue_queue_work_caller,
+
+	TP_PROTO(int req_cpu, struct pool_workqueue *pwq,
+		 struct work_struct *work, unsigned long caller),
+
+	TP_ARGS(req_cpu, pwq, work, caller),
+
+	TP_STRUCT__entry(
+		__field( void *,	work	)
+		__field( void *,	function)
+		__string( workqueue,	pwq->wq->name)
+		__field( int,		req_cpu	)
+		__field( int,		cpu	)
+		__field( unsigned long,	caller	)
+		__field( pid_t,		pid	)
+		__array( char,		comm,	TASK_COMM_LEN)
+	),
+
+	TP_fast_assign(
+		__entry->work		= work;
+		__entry->function	= work->func;
+		__assign_str(workqueue);
+		__entry->req_cpu	= req_cpu;
+		__entry->cpu		= pwq->pool->cpu;
+		__entry->caller		= caller;
+		__entry->pid		= current->pid;
+		memcpy(__entry->comm, current->comm, TASK_COMM_LEN);
+	),
+
+	TP_printk("work=%p function=%ps workqueue=%s req_cpu=%d cpu=%d caller=%pS pid=%d comm=%s",
+		  __entry->work, __entry->function, __get_str(workqueue),
+		  __entry->req_cpu, __entry->cpu, (void *)__entry->caller,
+		  __entry->pid, __entry->comm)
+);
+
 #endif /*  _TRACE_WORKQUEUE_H */
 
 /* This part must be outside protection */
