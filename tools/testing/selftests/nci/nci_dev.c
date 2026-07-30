@@ -33,6 +33,18 @@
 				 NFC_PROTO_ISO14443_B_MASK | \
 				 NFC_PROTO_ISO15693_MASK)
 
+#define SKIP_IF_DEV_NOT_AVAILABLE(fd, err) \
+	do { \
+		if ((fd) == -1) { \
+			if ((err) == ENOENT) \
+				SKIP(return, "Skipping test since /dev/virtual_nci does not exist"); \
+			else if ((err) == EACCES) \
+				SKIP(return, "Skipping test since /dev/virtual_nci permission denied (need root?)"); \
+			else \
+				SKIP(return, "Skipping test since /dev/virtual_nci open failed"); \
+		} \
+	} while (0)
+
 const __u8 nci_reset_cmd[] = {0x20, 0x00, 0x01, 0x01};
 const __u8 nci_init_cmd[] = {0x20, 0x01, 0x00};
 const __u8 nci_rf_discovery_cmd[] = {0x21, 0x03, 0x09, 0x04, 0x00, 0x01,
@@ -304,6 +316,7 @@ FIXTURE(NCI) {
 	__u32 pid;
 	__u16 fid;
 	int sd;
+	int open_errno;
 };
 
 FIXTURE_VARIANT(NCI) {
@@ -419,7 +432,10 @@ FIXTURE_SETUP(NCI)
 	ASSERT_NE(self->fid, -1);
 
 	self->virtual_nci_fd = open("/dev/virtual_nci", O_RDWR);
-	ASSERT_GT(self->virtual_nci_fd, -1);
+	if (self->virtual_nci_fd == -1) {
+		self->open_errno = errno;
+		return;
+	}
 
 	rc = setsockopt(self->sd, SOL_NETLINK, NETLINK_ADD_MEMBERSHIP, &event_group,
 			sizeof(event_group));
@@ -438,7 +454,7 @@ FIXTURE_SETUP(NCI)
 	else
 		rc = pthread_create(&thread_t, NULL, virtual_dev_open,
 				    (void *)&self->virtual_nci_fd);
-	ASSERT_GT(rc, -1);
+	ASSERT_EQ(rc, 0);
 
 	rc = send_cmd_with_idx(self->sd, self->fid, self->pid,
 			       NFC_CMD_DEV_UP, self->dev_idex);
@@ -500,6 +516,9 @@ FIXTURE_TEARDOWN(NCI)
 	int status;
 	int rc;
 
+	if (self->virtual_nci_fd == -1)
+		goto cleanup_netlink;
+
 	if (self->open_state) {
 		if (self->isNCI2)
 			rc = pthread_create(&thread_t, NULL,
@@ -509,7 +528,7 @@ FIXTURE_TEARDOWN(NCI)
 			rc = pthread_create(&thread_t, NULL, virtual_deinit,
 					    (void *)&self->virtual_nci_fd);
 
-		ASSERT_GT(rc, -1);
+		ASSERT_EQ(rc, 0);
 		rc = send_cmd_with_idx(self->sd, self->fid, self->pid,
 				       NFC_CMD_DEV_DOWN, self->dev_idex);
 		EXPECT_EQ(rc, 0);
@@ -518,15 +537,19 @@ FIXTURE_TEARDOWN(NCI)
 		ASSERT_EQ(status, 0);
 	}
 
-	close(self->sd);
 	close(self->virtual_nci_fd);
 	self->open_state = false;
+
+cleanup_netlink:
+	close(self->sd);
 }
 
 TEST_F(NCI, init)
 {
 	struct msgtemplate msg;
 	int rc;
+
+	SKIP_IF_DEV_NOT_AVAILABLE(self->virtual_nci_fd, self->open_errno);
 
 	rc = get_nci_devid(self->sd, self->fid, self->pid, self->dev_idex,
 			   &msg);
@@ -625,6 +648,8 @@ int stop_polling(int dev_idx, int virtual_fd, int sd, int fid, int pid)
 TEST_F(NCI, start_poll)
 {
 	int status;
+
+	SKIP_IF_DEV_NOT_AVAILABLE(self->virtual_nci_fd, self->open_errno);
 
 	status = start_polling(self->dev_idex, self->proto, self->virtual_nci_fd,
 			       self->sd, self->fid, self->pid);
@@ -841,6 +866,8 @@ TEST_F(NCI, t4t_tag_read)
 	int nfc_sock;
 	int status;
 
+	SKIP_IF_DEV_NOT_AVAILABLE(self->virtual_nci_fd, self->open_errno);
+
 	status = start_polling(self->dev_idex, self->proto, self->virtual_nci_fd,
 			       self->sd, self->fid, self->pid);
 	EXPECT_EQ(status, 0);
@@ -863,6 +890,8 @@ TEST_F(NCI, deinit)
 	int status;
 	int rc;
 
+	SKIP_IF_DEV_NOT_AVAILABLE(self->virtual_nci_fd, self->open_errno);
+
 	rc = get_nci_devid(self->sd, self->fid, self->pid, self->dev_idex,
 			   &msg);
 	ASSERT_EQ(rc, 0);
@@ -874,7 +903,7 @@ TEST_F(NCI, deinit)
 	else
 		rc = pthread_create(&thread_t, NULL, virtual_deinit,
 				    (void *)&self->virtual_nci_fd);
-	ASSERT_GT(rc, -1);
+	ASSERT_EQ(rc, 0);
 
 	rc = send_cmd_with_idx(self->sd, self->fid, self->pid,
 			       NFC_CMD_DEV_DOWN, self->dev_idex);
